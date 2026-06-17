@@ -1,0 +1,12 @@
+# Caddy reverse proxy for deephold-app
+# Routes /api/* to FastAPI, everything else to Next.js
+
+:80 {
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    handle {
+        reverse_proxy web:3000
+    }
+}

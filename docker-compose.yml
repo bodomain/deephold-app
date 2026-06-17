@@ -1,0 +1,81 @@
+name: deephold-app
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: deephold_api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://deephold:deephold@deephold_pg:5432/deephold
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+    networks:
+      - deephold-net
+    depends_on:
+      deephold_pg:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: deephold_web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000
+    depends_on:
+      - api
+
+  # Caddy is optional for dev — use it when you want a single entry point
+  # with auto-HTTPS. For dev, access web:3000 and api:8000 directly.
+  caddy:
+    image: caddy:2-alpine
+    container_name: deephold_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - deephold-net
+    depends_on:
+      - api
+      - web
+
+  # External deephold-db Postgres (must be running separately)
+  deephold_pg:
+    image: postgres:16-alpine
+    container_name: deephold_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deephold
+      POSTGRES_PASSWORD: deephold
+      POSTGRES_DB: deephold
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deephold -d deephold"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - deephold-net
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  deephold-net:
+    driver: bridge

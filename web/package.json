@@ -1,0 +1,35 @@
+{
+  "name": "deephold-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.1",
+    "react": "^19.0",
+    "react-dom": "^19.0",
+    "echarts": "^5.5",
+    "echarts-for-react": "^3.0",
+    "lucide-react": "^0.400",
+    "class-variance-authority": "^0.7",
+    "clsx": "^2.1",
+    "tailwind-merge": "^2.4",
+    "@radix-ui/react-slot": "^1.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^3.4",
+    "postcss": "^8.4",
+    "autoprefixer": "^10.4",
+    "eslint": "^8",
+    "eslint-config-next": "^15.1"
+  }
+}
