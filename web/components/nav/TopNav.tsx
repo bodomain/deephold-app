@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   Database,
   LineChart,
@@ -12,8 +13,15 @@ export function TopNav() {
     <nav className="border-b bg-card">
       <div className="container mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/" className="font-bold text-xl">
-            deephold
+          <Link href="/" className="flex items-center gap-2">
+            <Image
+              src="/logo-header.png"
+              alt="deephold"
+              width={120}
+              height={32}
+              priority
+              className="h-8 w-auto"
+            />
           </Link>
           <div className="flex items-center gap-4">
             <NavLink

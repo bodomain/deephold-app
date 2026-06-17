@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,8 +33,18 @@ export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center">deephold Login</CardTitle>
+        <CardHeader className="space-y-4">
+          <div className="flex justify-center">
+            <Image
+              src="/logo-header.png"
+              alt="deephold"
+              width={160}
+              height={42}
+              priority
+              className="h-10 w-auto"
+            />
+          </div>
+          <CardTitle className="text-2xl text-center">Login</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
