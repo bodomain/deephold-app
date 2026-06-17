@@ -1,71 +1,78 @@
-import { Button } from "@/components/ui/button";
-import {
-  Activity,
-  TrendingUp,
-  Database,
-  LineChart,
-} from "lucide-react";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="space-y-8">
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight">deephold</h1>
-        <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-          Financial market data platform — 30 years of history, 4M+ time
-          series observations across equities, macro, FX, bonds, and
-          commodities.
-        </p>
-      </div>
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { MiniSpark } from "@/components/charts/MiniSpark";
+import { apiGet } from "@/lib/api";
+import type { DashboardResponse } from "@/lib/types";
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <FeatureCard
-          icon={<Database className="h-8 w-8 text-blue-500" />}
-          title="Series Browser"
-          description="Filter by asset class, source, region. Search 600+ instruments and 100+ macro series."
-        />
-        <FeatureCard
-          icon={<LineChart className="h-8 w-8 text-green-500" />}
-          title="Interactive Charts"
-          description="Line and candlestick plots with zoom, pan, and date range selection."
-        />
-        <FeatureCard
-          icon={<TrendingUp className="h-8 w-8 text-purple-500" />}
-          title="Analytics"
-          description="CAGR, volatility, Sharpe ratio, max drawdown — computed on the fly."
-        />
-        <FeatureCard
-          icon={<Activity className="h-8 w-8 text-orange-500" />}
-          title="Compare & Correlate"
-          description="Overlay multiple series, rolling correlation matrices, macro dashboard."
-        />
-      </div>
-
-      <div className="text-center">
-        <Button size="lg" asChild>
-          <a href="/series">Browse Series</a>
-        </Button>
-      </div>
-    </div>
-  );
+function fmtNum(v: number | null, digits = 2): string {
+  if (v === null) return "—";
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return v.toFixed(digits);
 }
 
-function FeatureCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
+function fmtPct(v: number | null): string {
+  if (v === null) return "—";
+  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+}
+
+export default function DashboardPage() {
+  const [data, setData] = useState<DashboardResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiGet<DashboardResponse>("/api/dashboard/macro")
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-center py-12 text-muted-foreground">Loading...</div>;
+  if (error) return <div className="text-destructive">Error: {error}</div>;
+  if (!data) return null;
+
   return (
-    <div className="rounded-lg border bg-card p-6 space-y-3">
-      <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-muted">
-        {icon}
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Macro Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {data.items.map((item) => (
+          <Link key={item.id} href={`/series/${encodeURIComponent(item.id)}`}>
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {item.name}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-end justify-between mb-2">
+                  <div className="text-2xl font-bold tabular-nums">
+                    {fmtNum(item.latest_value)}
+                  </div>
+                  <Badge
+                    variant={
+                      item.change_pct !== null && item.change_pct >= 0
+                        ? "green"
+                        : "destructive"
+                    }
+                  >
+                    {fmtPct(item.change_pct)}
+                  </Badge>
+                </div>
+                <MiniSpark values={item.sparkline} />
+                <div className="text-xs text-muted-foreground mt-1">
+                  {item.latest_date || "—"}
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
       </div>
-      <h3 className="font-semibold text-lg">{title}</h3>
-      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
