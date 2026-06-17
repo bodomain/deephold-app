@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy.orm import Session
-
 from deephold_db.db.session import get_sessionmaker
+from sqlalchemy.orm import Session
 
 
 def get_db() -> Iterator[Session]:
