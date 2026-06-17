@@ -8,12 +8,21 @@ import type { SeriesSummary } from "@/lib/types";
 
 export default function SeriesPage() {
   const [series, setSeries] = useState<SeriesSummary[]>([]);
+  const [allSeries, setAllSeries] = useState<SeriesSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState("");
   const [source, setSource] = useState("");
   const [query, setQuery] = useState("");
 
+  // Load full series list once for autocomplete
+  useEffect(() => {
+    apiGet<SeriesSummary[]>("/api/series?limit=1000")
+      .then(setAllSeries)
+      .catch(() => {});
+  }, []);
+
+  // Load filtered series for the table
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -35,6 +44,7 @@ export default function SeriesPage() {
         type={type}
         source={source}
         query={query}
+        allSeries={allSeries}
         onTypeChange={setType}
         onSourceChange={setSource}
         onQueryChange={setQuery}

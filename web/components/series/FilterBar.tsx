@@ -1,12 +1,14 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { SeriesSearch } from "@/components/series/SeriesSearch";
+import type { SeriesSummary } from "@/lib/types";
 
 interface FilterBarProps {
   type: string;
   source: string;
   query: string;
+  allSeries: SeriesSummary[];
   onTypeChange: (v: string) => void;
   onSourceChange: (v: string) => void;
   onQueryChange: (v: string) => void;
@@ -19,17 +21,19 @@ export function FilterBar({
   type,
   source,
   query,
+  allSeries,
   onTypeChange,
   onSourceChange,
   onQueryChange,
 }: FilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4">
-      <Input
-        placeholder="Search series..."
+      <SeriesSearch
+        allSeries={allSeries}
         value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-        className="max-w-xs"
+        onChange={onQueryChange}
+        typeFilter={type}
+        sourceFilter={source}
       />
 
       <div className="flex items-center gap-1">
