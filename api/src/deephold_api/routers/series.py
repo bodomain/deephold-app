@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import time
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,6 +24,10 @@ from deephold_api.schemas import (
 
 router = APIRouter(prefix="/api/series", tags=["series"])
 
+# In-memory cache for the series list (TTL in seconds)
+_CACHE_TTL = 300
+_cache: tuple[float, list[SeriesSummary]] = (0.0, [])
+
 
 def _parse_series_id(series_id: str) -> tuple[str, str]:
     """Split 'price:AAPL' → ('price', 'AAPL')."""
@@ -30,6 +35,48 @@ def _parse_series_id(series_id: str) -> tuple[str, str]:
     if len(parts) != 2:
         raise HTTPException(400, f"Invalid series ID: {series_id}")
     return parts[0], parts[1]
+
+
+def _load_all_series(db: Session) -> list[SeriesSummary]:
+    """Load all series from the materialized view (fast)."""
+    rows = db.execute(
+        text("""
+        SELECT series_type, identifier, name, asset_class, currency, source,
+               obs_count, first_date, last_date, latest_value
+        FROM mv_series_stats
+        ORDER BY series_type, name
+    """)
+    ).fetchall()
+
+    results: list[SeriesSummary] = []
+    for r in rows:
+        results.append(
+            SeriesSummary(
+                id=f"{r.series_type}:{r.identifier}",
+                type=r.series_type,
+                identifier=r.identifier,
+                name=r.name,
+                asset_class=r.asset_class,
+                source=r.source,
+                currency=r.currency,
+                count=r.obs_count,
+                first_date=r.first_date,
+                last_date=r.last_date,
+                latest_value=float(r.latest_value) if r.latest_value is not None else None,
+            )
+        )
+    return results
+
+
+def _get_all_series(db: Session) -> list[SeriesSummary]:
+    """Get all series with in-memory caching (5 min TTL)."""
+    global _cache
+    now = time.time()
+    if _cache[0] and (now - _cache[0]) < _CACHE_TTL:
+        return _cache[1]
+    series = _load_all_series(db)
+    _cache = (now, series)
+    return series
 
 
 # ---------------------------------------------------------------------------
@@ -48,150 +95,9 @@ def list_series(
     db: Session = Depends(get_db),
 ) -> list[SeriesSummary]:
     """List all available series with optional filters."""
-    results: list[SeriesSummary] = []
+    results = _get_all_series(db)
 
-    # --- Price series (equities, indices, commodities, ETFs) ---
-    rows = db.execute(
-        text("""
-        WITH latest AS (
-          SELECT DISTINCT ON (p.instrument_id) p.instrument_id, p.close
-          FROM prices_daily p ORDER BY p.instrument_id, p.date DESC
-        )
-        SELECT
-          ii.value AS identifier, i.name, i.asset_class, i.currency,
-          v.code AS source, COUNT(p.date) AS cnt,
-          MIN(p.date) AS first_date, MAX(p.date) AS last_date,
-          l.close AS latest_value
-        FROM instruments i
-        JOIN instrument_identifiers ii ON i.instrument_id = ii.instrument_id
-        JOIN prices_daily p ON i.instrument_id = p.instrument_id
-        LEFT JOIN vendors v ON p.vendor_id = v.vendor_id
-        LEFT JOIN latest l ON i.instrument_id = l.instrument_id
-        WHERE ii.scheme = 'YAHOO'
-        GROUP BY ii.value, i.name, i.asset_class, i.currency, v.code, l.close
-    """)
-    ).fetchall()
-    for r in rows:
-        results.append(
-            SeriesSummary(
-                id=f"price:{r.identifier}",
-                type="price",
-                identifier=r.identifier,
-                name=r.name,
-                asset_class=r.asset_class,
-                source=r.source,
-                currency=r.currency,
-                count=r.cnt,
-                first_date=r.first_date,
-                last_date=r.last_date,
-                latest_value=float(r.latest_value) if r.latest_value else None,
-            )
-        )
-
-    # --- Bond yields ---
-    rows = db.execute(
-        text("""
-        WITH latest AS (
-          SELECT DISTINCT ON (b.instrument_id) b.instrument_id, b.yield
-          FROM bond_yields b ORDER BY b.instrument_id, b.date DESC
-        )
-        SELECT
-          ii.value AS identifier, i.name,
-          COUNT(b.date) AS cnt, MIN(b.date) AS first_date, MAX(b.date) AS last_date,
-          l.yield AS latest_value
-        FROM instruments i
-        JOIN instrument_identifiers ii ON i.instrument_id = ii.instrument_id
-        JOIN bond_yields b ON i.instrument_id = b.instrument_id
-        LEFT JOIN latest l ON i.instrument_id = l.instrument_id
-        WHERE ii.scheme = 'YAHOO'
-        GROUP BY ii.value, i.name, l.yield
-    """)
-    ).fetchall()
-    for r in rows:
-        results.append(
-            SeriesSummary(
-                id=f"bond:{r.identifier}",
-                type="bond",
-                identifier=r.identifier,
-                name=r.name,
-                asset_class="bond_gov",
-                source="fred",
-                currency="%",
-                count=r.cnt,
-                first_date=r.first_date,
-                last_date=r.last_date,
-                latest_value=float(r.latest_value) if r.latest_value else None,
-            )
-        )
-
-    # --- FX rates ---
-    rows = db.execute(
-        text("""
-        WITH latest AS (
-          SELECT DISTINCT ON (ccy_from, ccy_to) ccy_from, ccy_to, rate
-          FROM fx_rates_daily ORDER BY ccy_from, ccy_to, date DESC
-        )
-        SELECT
-          f.ccy_from || '/' || f.ccy_to AS identifier,
-          COUNT(*) AS cnt, MIN(f.date) AS first_date, MAX(f.date) AS last_date,
-          l.rate AS latest_value
-        FROM fx_rates_daily f
-        LEFT JOIN latest l ON f.ccy_from = l.ccy_from AND f.ccy_to = l.ccy_to
-        GROUP BY f.ccy_from, f.ccy_to, l.rate
-    """)
-    ).fetchall()
-    for r in rows:
-        results.append(
-            SeriesSummary(
-                id=f"fx:{r.identifier}",
-                type="fx",
-                identifier=r.identifier,
-                name=r.identifier,
-                asset_class="fx",
-                source="mixed",
-                count=r.cnt,
-                first_date=r.first_date,
-                last_date=r.last_date,
-                latest_value=float(r.latest_value) if r.latest_value else None,
-            )
-        )
-
-    # --- Macro series ---
-    rows = db.execute(
-        text("""
-        WITH latest AS (
-          SELECT DISTINCT ON (series_id) series_id, value
-          FROM macro_observations ORDER BY series_id, date DESC
-        )
-        SELECT
-          ms.series_id AS identifier, ms.name, ms.source, ms.unit, ms.frequency,
-          COUNT(mo.date) AS cnt, MIN(mo.date) AS first_date, MAX(mo.date) AS last_date,
-          l.value AS latest_value
-        FROM macro_series ms
-        JOIN macro_observations mo ON ms.series_id = mo.series_id
-        LEFT JOIN latest l ON ms.series_id = l.series_id
-        GROUP BY ms.series_id, ms.name, ms.source, ms.unit, ms.frequency, l.value
-    """)
-    ).fetchall()
-    for r in rows:
-        results.append(
-            SeriesSummary(
-                id=f"macro:{r.identifier}",
-                type="macro",
-                identifier=r.identifier,
-                name=r.name,
-                asset_class="macro",
-                source=r.source,
-                unit=r.unit,
-                frequency=r.frequency,
-                count=r.cnt,
-                first_date=r.first_date,
-                last_date=r.last_date,
-                latest_value=float(r.latest_value) if r.latest_value else None,
-            )
-        )
-
-    # --- Filter ---
+    # Filter
     if type:
         results = [r for r in results if r.type == type]
     if asset_class:
@@ -202,8 +108,17 @@ def list_series(
         ql = q.lower()
         results = [r for r in results if ql in (r.name or "").lower() or ql in r.identifier.lower()]
 
-    results.sort(key=lambda r: (r.type, r.name or r.identifier))
     return results[offset : offset + limit]
+
+
+@router.post("/refresh-cache")
+def refresh_cache(db: Session = Depends(get_db)) -> dict:
+    """Force-refresh the in-memory series cache + materialized view."""
+    global _cache
+    db.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_series_stats"))
+    db.commit()
+    _cache = (0.0, [])
+    return {"status": "ok", "message": "Cache refreshed"}
 
 
 # ---------------------------------------------------------------------------
