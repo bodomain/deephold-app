@@ -4,7 +4,7 @@ Usage:
     python -m deephold_api.create_admin <email> <password> [--name NAME]
 
 Example:
-    python -m deephold_api.create_admin admin@example.com secret123 --name "Admin"
+    python -m deephold_api.create_admin admin@deephold.dev secret123 --name "Admin"
 """
 
 from __future__ import annotations

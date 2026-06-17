@@ -90,8 +90,12 @@ export default function SeriesDetailPage({
   }
 
   const isPrice = detail.type === "price";
-  const lineDates = observations.map((o) => o.date);
-  const lineValues = observations.map((o) => o.value);
+  const lineDates = isPrice
+    ? candles.map((c) => c.date)
+    : observations.map((o) => o.date);
+  const lineValues = isPrice
+    ? candles.map((c) => c.close)
+    : observations.map((o) => o.value);
 
   return (
     <div className="space-y-6">
